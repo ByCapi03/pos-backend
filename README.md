@@ -19,7 +19,7 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_NAME=pos_db
 DB_USER=postgres
-DB_PASSWORD=tu_password
+DB_PASSWORD=7722794
 JWT_SECRET_KEY=changeme-super-secret-key-change-in-production-32b
 CORS_ORIGINS=http://localhost:4200,http://127.0.0.1:4200
 ```
@@ -30,6 +30,8 @@ CORS_ORIGINS=http://localhost:4200,http://127.0.0.1:4200
 cd pos-backend-spring
 .\mvnw.cmd -DskipTests "-Dspring-boot.run.profiles=local" spring-boot:run
 ```
+si ya tengo base en postgres: 
+.\mvnw.cmd spring-boot:run
 
 ## Arranque con PostgreSQL
 
