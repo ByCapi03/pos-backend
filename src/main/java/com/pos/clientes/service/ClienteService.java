@@ -15,6 +15,7 @@ import com.pos.common.access.EmpresaAccess;
 import com.pos.common.exception.ApiException;
 import com.pos.usuarios.domain.Usuario;
 import com.pos.usuarios.repo.UsuarioRepository;
+import com.pos.usuarios.repo.UsuarioRolRepository;
 
 @Service
 public class ClienteService {
@@ -23,16 +24,19 @@ public class ClienteService {
     private final CategoriaClienteRepository categoriaRepository;
     private final ClienteRepository clienteRepository;
     private final UsuarioRepository usuarioRepository;
+    private final UsuarioRolRepository usuarioRolRepository;
 
     public ClienteService(
             EmpresaAccess empresaAccess,
             CategoriaClienteRepository categoriaRepository,
             ClienteRepository clienteRepository,
-            UsuarioRepository usuarioRepository) {
+            UsuarioRepository usuarioRepository,
+            UsuarioRolRepository usuarioRolRepository) {
         this.empresaAccess = empresaAccess;
         this.categoriaRepository = categoriaRepository;
         this.clienteRepository = clienteRepository;
         this.usuarioRepository = usuarioRepository;
+        this.usuarioRolRepository = usuarioRolRepository;
     }
 
     @Transactional
@@ -139,10 +143,34 @@ public class ClienteService {
         empresaAccess.requireEmpresa(usuario, idEmpresa);
         Cliente cliente = clienteRepository.findById(idCliente)
                 .orElseThrow(() -> ApiException.notFound("Cliente no encontrado."));
-        if (cliente.getCategoriaCliente() == null || !idEmpresa.equals(cliente.getCategoriaCliente().getIdEmpresa())) {
+
+        boolean pertenecePorCategoria = cliente.getCategoriaCliente() != null
+                && idEmpresa.equals(cliente.getCategoriaCliente().getIdEmpresa());
+        boolean pertenecePorRol = usuarioRolRepository.existsByUsuario_IdUsuarioAndIdEmpresaAndActivoTrue(
+                cliente.getIdUsuario(), idEmpresa);
+
+        if (!pertenecePorCategoria && !pertenecePorRol) {
             throw ApiException.notFound("Cliente no encontrado para esta empresa.");
         }
-        applyUpdate(cliente, datos);
+
+        if (datos.getIdCategoriaCliente() != null) {
+            CategoriaCliente categoria = categoriaRepository.findByIdCategoriaClienteAndIdEmpresa(
+                    datos.getIdCategoriaCliente(), idEmpresa)
+                    .orElseThrow(() -> ApiException.badRequest("Categoria de cliente no encontrada para esta empresa."));
+            cliente.setCategoriaCliente(categoria);
+        }
+        if (datos.getCodigoCliente() != null) {
+            cliente.setCodigoCliente(datos.getCodigoCliente());
+        }
+        if (datos.getSaldoCredito() != null) {
+            cliente.setSaldoCredito(datos.getSaldoCredito());
+        }
+        if (datos.getLimiteCredito() != null) {
+            cliente.setLimiteCredito(datos.getLimiteCredito());
+        }
+        if (datos.getActivo() != null) {
+            cliente.setActivo(datos.getActivo());
+        }
         return toCliente(clienteRepository.save(cliente));
     }
 

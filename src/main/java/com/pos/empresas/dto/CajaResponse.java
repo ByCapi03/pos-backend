@@ -8,5 +8,17 @@ public record CajaResponse(
 		String nombre,
 		String codigo,
 		LocalDate fechaCreacion,
-		Boolean activo) {
+		Boolean activo,
+		String estadoOperativo,
+		CajaSesionActivaResponse sesionActiva) {
+
+	public CajaResponse(
+			Integer idCaja,
+			Integer idSucursal,
+			String nombre,
+			String codigo,
+			LocalDate fechaCreacion,
+			Boolean activo) {
+		this(idCaja, idSucursal, nombre, codigo, fechaCreacion, activo, null, null);
+	}
 }

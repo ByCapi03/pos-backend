@@ -558,7 +558,7 @@ public class SucursalService {
 		List<HistorialSuscripcion> activas = historialSuscripcionRepository.findActivasPorEmpresa(
 				idEmpresa, LocalDate.now());
 		if (activas.isEmpty() || activas.get(0).getPlan() == null) {
-			throw ApiException.notFound("La empresa no tiene una suscripcion activa.");
+			return null;
 		}
 		List<PlanModulo> planModulos = planModuloRepository.findByPlan_IdPlan(activas.get(0).getPlan().getIdPlan());
 		for (PlanModulo planModulo : planModulos) {

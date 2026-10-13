@@ -28,6 +28,7 @@ import com.pos.empresas.dto.CajaCierreDetalleCreate;
 import com.pos.empresas.dto.CajaCierreDetalleResponse;
 import com.pos.empresas.dto.CajaCreate;
 import com.pos.empresas.dto.CajaResponse;
+import com.pos.empresas.dto.CajaSesionActivaResponse;
 import com.pos.empresas.dto.CajaSesionCierreResponse;
 import com.pos.empresas.dto.CajaSesionCreate;
 import com.pos.empresas.dto.CajaSesionResponse;
@@ -43,8 +44,10 @@ import com.pos.empresas.repo.MovimientoCajaRepository;
 import com.pos.empresas.repo.SucursalRepository;
 import com.pos.empresas.repo.TipoMovimientoCajaRepository;
 import com.pos.usuarios.domain.Usuario;
+import com.pos.usuarios.repo.UsuarioRepository;
 import com.pos.ventas.domain.MetodoPago;
 import com.pos.ventas.repo.MetodoPagoRepository;
+import java.util.Optional;
 
 @Service
 public class CajaService {
@@ -57,6 +60,7 @@ public class CajaService {
 	private final SucursalRepository sucursalRepository;
 	private final TipoMovimientoCajaRepository tipoMovimientoCajaRepository;
 	private final MetodoPagoRepository metodoPagoRepository;
+	private final UsuarioRepository usuarioRepository;
 
 	public CajaService(
 			EmpresaAccess empresaAccess,
@@ -66,7 +70,8 @@ public class CajaService {
 			MovimientoCajaRepository movimientoCajaRepository,
 			SucursalRepository sucursalRepository,
 			TipoMovimientoCajaRepository tipoMovimientoCajaRepository,
-			MetodoPagoRepository metodoPagoRepository) {
+			MetodoPagoRepository metodoPagoRepository,
+			UsuarioRepository usuarioRepository) {
 		this.empresaAccess = empresaAccess;
 		this.cajaRepository = cajaRepository;
 		this.cajaSesionRepository = cajaSesionRepository;
@@ -75,6 +80,7 @@ public class CajaService {
 		this.sucursalRepository = sucursalRepository;
 		this.tipoMovimientoCajaRepository = tipoMovimientoCajaRepository;
 		this.metodoPagoRepository = metodoPagoRepository;
+		this.usuarioRepository = usuarioRepository;
 	}
 
 	@Transactional
@@ -100,14 +106,16 @@ public class CajaService {
 	@Transactional(readOnly = true)
 	public List<CajaResponse> listar(Integer idEmpresa, Integer idSucursal) {
 		requireSucursal(idEmpresa, idSucursal);
+		Usuario usuario = SecurityUtils.currentUser();
 		return cajaRepository.findBySucursal_IdSucursal(idSucursal).stream()
-				.map(this::toCajaResponse)
+				.map(caja -> toCajaResponse(caja, usuario))
 				.toList();
 	}
 
 	@Transactional(readOnly = true)
 	public CajaResponse obtener(Integer idEmpresa, Integer idSucursal, Integer idCaja) {
-		return toCajaResponse(requireCaja(idEmpresa, idSucursal, idCaja));
+		Usuario usuario = SecurityUtils.currentUser();
+		return toCajaResponse(requireCaja(idEmpresa, idSucursal, idCaja), usuario);
 	}
 
 	@Transactional
@@ -116,7 +124,8 @@ public class CajaService {
 		caja.setNombre(datos.nombre());
 		caja.setCodigo(datos.codigo());
 		caja.setActivo(datos.activo());
-		return toCajaResponse(cajaRepository.save(caja));
+		Usuario usuario = SecurityUtils.currentUser();
+		return toCajaResponse(cajaRepository.save(caja), usuario);
 	}
 
 	@Transactional
@@ -375,14 +384,67 @@ public class CajaService {
 	}
 
 	private CajaResponse toCajaResponse(Caja caja) {
+		Usuario usuario = null;
+		try {
+			usuario = SecurityUtils.currentUser();
+		} catch (Exception ignored) {
+		}
+		return toCajaResponse(caja, usuario);
+	}
+
+	private CajaResponse toCajaResponse(Caja caja, Usuario usuario) {
 		Integer idSucursal = caja.getSucursal() != null ? caja.getSucursal().getIdSucursal() : null;
+		if (caja.getActivo() == null || !caja.getActivo()) {
+			return new CajaResponse(
+					caja.getIdCaja(),
+					idSucursal,
+					caja.getNombre(),
+					caja.getCodigo(),
+					caja.getFechaCreacion(),
+					caja.getActivo(),
+					"inactiva",
+					null);
+		}
+
+		Optional<CajaSesion> sesionOpt = cajaSesionRepository.findFirstByCaja_IdCajaAndEstado(caja.getIdCaja(), "Abierto");
+		if (sesionOpt.isEmpty()) {
+			return new CajaResponse(
+					caja.getIdCaja(),
+					idSucursal,
+					caja.getNombre(),
+					caja.getCodigo(),
+					caja.getFechaCreacion(),
+					caja.getActivo(),
+					"disponible",
+					null);
+		}
+
+		CajaSesion sesion = sesionOpt.get();
+		boolean esUsuarioActual = usuario != null && usuario.getIdUsuario().equals(sesion.getIdUsuario());
+		String estadoOperativo = esUsuarioActual ? "abierta_por_mi" : "en_uso";
+		String nombreUsuario = null;
+		if (usuarioRepository != null && sesion.getIdUsuario() != null) {
+			nombreUsuario = usuarioRepository.findById(sesion.getIdUsuario())
+					.map(u -> u.getPersona() != null ? u.getPersona().getNombreCompleto() : u.getEmail())
+					.orElse(null);
+		}
+
+		CajaSesionActivaResponse sesionActiva = new CajaSesionActivaResponse(
+				sesion.getIdCajaSesion(),
+				sesion.getIdUsuario(),
+				nombreUsuario,
+				sesion.getFechaApertura() != null ? sesion.getFechaApertura().toString() : null,
+				esUsuarioActual);
+
 		return new CajaResponse(
 				caja.getIdCaja(),
 				idSucursal,
 				caja.getNombre(),
 				caja.getCodigo(),
 				caja.getFechaCreacion(),
-				caja.getActivo());
+				caja.getActivo(),
+				estadoOperativo,
+				sesionActiva);
 	}
 
 	private CajaSesionResponse toSesionResponse(CajaSesion sesion) {
