@@ -47,7 +47,9 @@ import com.pos.empresas.dto.PersonalRelacionResponse;
 import com.pos.empresas.dto.SucursalCreate;
 import com.pos.empresas.dto.SucursalEmpleadoAsignadaResponse;
 import com.pos.empresas.dto.SucursalResponse;
+import java.math.BigDecimal;
 import com.pos.empresas.dto.SucursalUpdate;
+import com.pos.ventas.repo.CuentaPorCobrarRepository;
 import com.pos.empresas.dto.UsuarioEmpleadoResponse;
 import com.pos.empresas.repo.EmpresaRepository;
 import com.pos.empresas.repo.HistorialSuscripcionRepository;
@@ -79,6 +81,7 @@ public class SucursalService {
 	private final HistorialSuscripcionRepository historialSuscripcionRepository;
 	private final PlanModuloRepository planModuloRepository;
 	private final ClienteRepository clienteRepository;
+	private final CuentaPorCobrarRepository cuentaPorCobrarRepository;
 	private final InventarioStockSync inventarioStockSync;
 	private final JwtService jwtService;
 	private final EmailService emailService;
@@ -96,6 +99,7 @@ public class SucursalService {
 			HistorialSuscripcionRepository historialSuscripcionRepository,
 			PlanModuloRepository planModuloRepository,
 			ClienteRepository clienteRepository,
+			CuentaPorCobrarRepository cuentaPorCobrarRepository,
 			InventarioStockSync inventarioStockSync,
 			JwtService jwtService,
 			EmailService emailService,
@@ -111,6 +115,7 @@ public class SucursalService {
 		this.historialSuscripcionRepository = historialSuscripcionRepository;
 		this.planModuloRepository = planModuloRepository;
 		this.clienteRepository = clienteRepository;
+		this.cuentaPorCobrarRepository = cuentaPorCobrarRepository;
 		this.inventarioStockSync = inventarioStockSync;
 		this.jwtService = jwtService;
 		this.emailService = emailService;
@@ -483,11 +488,23 @@ public class SucursalService {
 		Rol rolCliente = rolRepository.findByNombreIgnoreCase("CLIENTE")
 				.orElseThrow(() -> ApiException.badRequest("No existe el rol CLIENTE."));
 
+		Map<Integer, BigDecimal> saldosMap = new HashMap<>();
+		for (Object[] row : cuentaPorCobrarRepository.findSaldosPendientesPorCliente()) {
+			if (row != null && row.length >= 2 && row[0] instanceof Integer idCli && row[1] instanceof BigDecimal sum) {
+				saldosMap.put(idCli, sum);
+			}
+		}
+
 		List<ClienteEmpresaResponse> resultado = new ArrayList<>();
 		for (UsuarioRol usuarioRol : usuarioRolRepository.findActivosPorEmpresaYRolSinSucursal(
 				idEmpresa, rolCliente.getIdRol())) {
 			Cliente cliente = clienteRepository.findFirstByIdUsuarioOrderByIdClienteAsc(
 					usuarioRol.getUsuario().getIdUsuario()).orElse(null);
+			BigDecimal saldo = BigDecimal.ZERO;
+			if (cliente != null) {
+				saldo = saldosMap.getOrDefault(cliente.getIdCliente(),
+						cliente.getSaldoCredito() != null ? cliente.getSaldoCredito() : BigDecimal.ZERO);
+			}
 			resultado.add(new ClienteEmpresaResponse(
 					usuarioRol.getIdUsuarioRol(),
 					usuarioRol.getUsuario().getIdUsuario(),
@@ -496,7 +513,7 @@ public class SucursalService {
 					usuarioRol.getIdSucursal(),
 					usuarioRol.getActivo(),
 					toUsuarioEmpleado(usuarioRol.getUsuario()),
-					toCliente(cliente)));
+					toCliente(cliente, saldo)));
 		}
 		return resultado;
 	}
@@ -761,18 +778,23 @@ public class SucursalService {
 	}
 
 	private ClienteResponse toCliente(Cliente cliente) {
+		return toCliente(cliente, null);
+	}
+
+	private ClienteResponse toCliente(Cliente cliente, BigDecimal saldoCalculado) {
 		if (cliente == null) {
 			return null;
 		}
 		Integer idCategoria = cliente.getCategoriaCliente() != null
 				? cliente.getCategoriaCliente().getIdCategoriaCliente()
 				: null;
+		BigDecimal saldo = saldoCalculado != null ? saldoCalculado : (cliente.getSaldoCredito() != null ? cliente.getSaldoCredito() : BigDecimal.ZERO);
 		return new ClienteResponse(
 				cliente.getIdCliente(),
 				cliente.getIdUsuario(),
 				idCategoria,
 				cliente.getCodigoCliente(),
-				cliente.getSaldoCredito(),
+				saldo,
 				cliente.getLimiteCredito(),
 				cliente.getActivo());
 	}

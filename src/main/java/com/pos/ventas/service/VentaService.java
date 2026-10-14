@@ -275,6 +275,8 @@ public class VentaService {
                     ? 0 : cliente.getCategoriaCliente().getPlazoCredito()));
             cuenta.setEstado("PENDIENTE");
             cuenta = cuentaPorCobrarRepository.save(cuenta);
+            cliente.setSaldoCredito(cuentaPorCobrarRepository.sumSaldoPendienteByCliente(cliente.getIdCliente()));
+            clienteRepository.save(cliente);
         }
 
         TipoMovimientoCaja tipoIngreso = tipoMovimientoCajaRepository.findByNombreIgnoreCase("INGRESO").orElse(null);
@@ -400,6 +402,13 @@ public class VentaService {
             cuenta.setEstado("PAGADA");
         }
         cuentaPorCobrarRepository.save(cuenta);
+
+        if (cuenta.getVenta().getIdCliente() != null) {
+            clienteRepository.findById(cuenta.getVenta().getIdCliente()).ifPresent(cli -> {
+                cli.setSaldoCredito(cuentaPorCobrarRepository.sumSaldoPendienteByCliente(cli.getIdCliente()));
+                clienteRepository.save(cli);
+            });
+        }
 
         BigDecimal saldoPendienteFinal = cuenta.getSaldoPendiente();
         String estadoFinal = cuenta.getEstado();
